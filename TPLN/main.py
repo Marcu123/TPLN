@@ -6,6 +6,10 @@ from bs4 import BeautifulSoup
 import re
 import numpy as np
 import torch
+from rouge_score import rouge_scorer
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from bert_score import score as bertscore
+
 
 # ====== Pentru rezumare EXTRACTIVĂ (Sentence-BERT) ======
 from sentence_transformers import SentenceTransformer
@@ -159,24 +163,69 @@ def abstractive_summarize(text):
     return summary
 
 # --------------------------------------------------------
-# 6. DEMO DE UTILIZARE
+# 7. EVALUARE REZUMATE (ROUGE, BLEU, BERTScore)
+# --------------------------------------------------------
+
+def evaluate_summary(generated_summary, reference_summary):
+    """
+    Evaluează rezumatul generat folosind ROUGE, BLEU și BERTScore.
+    """
+    results = {}
+
+    # ROUGE Score
+    rouge = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
+    rouge_scores = rouge.score(reference_summary, generated_summary)
+    results['ROUGE-1'] = rouge_scores['rouge1'].fmeasure
+    results['ROUGE-L'] = rouge_scores['rougeL'].fmeasure
+
+    # BLEU Score
+    smoothing = SmoothingFunction().method1
+    reference_tokens = [word_tokenize(reference_summary.lower())]
+    generated_tokens = word_tokenize(generated_summary.lower())
+    bleu_score = sentence_bleu(reference_tokens, generated_tokens, smoothing_function=smoothing)
+    results['BLEU'] = bleu_score
+
+    # BERTScore
+    P, R, F1 = bertscore([generated_summary], [reference_summary], lang='ro', rescale_with_baseline=True)
+    results['BERTScore (F1)'] = F1.item()
+
+    return results
+
+# --------------------------------------------------------
+# 8. DEMO DE UTILIZARE CU EVALUARE
 # --------------------------------------------------------
 
 if __name__ == "__main__":
-    # 1) Citim textul din PDF
-    pdf_text = extract_text_from_pdf("stefan cel mare.pdf")  # Înlocuiește cu calea ta
-    cleaned_pdf_text = clean_text(pdf_text)
-    pdf_sentences, pdf_words = tokenize_text(cleaned_pdf_text)
+    if __name__ == "__main__":
+        # 1) Citim textul din PDF
+        pdf_text = extract_text_from_pdf("stefan cel mare.pdf")  # Înlocuiește cu calea ta
+        cleaned_pdf_text = clean_text(pdf_text)
+        pdf_sentences, pdf_words = tokenize_text(cleaned_pdf_text)
 
-    # 2) REZUMARE EXTRACTIVĂ
-    extractive_summary_pdf = extractive_summarize(pdf_sentences, top_n=5)
-    print("Rezumat EXTRACTIV (PDF):")
-    for sentence in extractive_summary_pdf:
-        print(" -", sentence)
+        # 2) REZUMARE EXTRACTIVĂ
+        extractive_summary_pdf = extractive_summarize(pdf_sentences, top_n=5)
+        print("Rezumat EXTRACTIV (PDF):")
+        for sentence in extractive_summary_pdf:
+            print(" -", sentence)
 
-    # 3) REZUMARE ABSTRACTIVĂ (direct)
-    concatenated_pdf_text = " ".join(pdf_sentences)
-    abstractive_summary_pdf = abstractive_summarize(concatenated_pdf_text)
-    print("\nRezumat ABSTRACTIV (PDF) - direct (sampling):")
-    print(abstractive_summary_pdf)
+        # 3) REZUMARE ABSTRACTIVĂ (direct)
+        concatenated_pdf_text = " ".join(pdf_sentences)
+        abstractive_summary_pdf = abstractive_summarize(concatenated_pdf_text)
+        print("\nRezumat ABSTRACTIV (PDF) - direct (sampling):")
+        print(abstractive_summary_pdf)
+
+    # Rezumatul uman de referință (trebuie introdus manual)
+    reference_summary = open("rez_stefan_cel_mare.txt", "r", encoding="utf-8").read()
+
+    # Evaluare rezumat EXTRACTIV
+    evaluation_extractive = evaluate_summary(" ".join(extractive_summary_pdf), reference_summary)
+    print("Evaluare rezumat EXTRACTIV:")
+    for metric, score in evaluation_extractive.items():
+        print(f"{metric}: {score:.4f}")
+
+    # Evaluare rezumat ABSTRACTIV
+    evaluation_abstractive = evaluate_summary(" ".join(abstractive_summary_pdf), reference_summary)
+    print("\nEvaluare rezumat ABSTRACTIV:")
+    for metric, score in evaluation_abstractive.items():
+        print(f"{metric}: {score:.4f}")
 
